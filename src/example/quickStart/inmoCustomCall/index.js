@@ -21,6 +21,114 @@ function setOptionsToLocal(option) {
   localStorage.setItem("__options", JSON.stringify({ ...local, ...option }));
 }
 
+// ===================== i18n =====================
+const I18N = {
+  "zh-CN": {
+    language: "语言",
+    localView: "本地画面",
+    local: "本地",
+    settings: "设置",
+    close: "关闭",
+    join: "加入",
+    leave: "离开",
+    video: "视频",
+    audio: "音频",
+    enable: "开启",
+    disable: "关闭",
+    cancel: "取消",
+    save: "保存",
+    appCertificate: "App Certificate（可选）",
+    userId: "User ID（可选）",
+    tokenLabel: "Token（可选）",
+    phAppId: "请输入 App ID",
+    phAppCertificate: "请输入 App Certificate",
+    phChannel: "请输入频道名",
+    phUserId: "请输入用户 ID",
+    phToken: "请输入 Token",
+    placeholderNotJoined: "未加入频道，点击「加入」开始通话",
+    placeholderJoined: "已加入频道，等待远端用户…",
+    settingsSaved: "设置已保存",
+    needAppId: "请先在「设置」中填写 App ID",
+    needChannel: "请先在「设置」中填写 Channel",
+    joinSuccess: "加入频道成功",
+    tokenError: "Token 错误，请检查 Token 参数",
+    joinFailed: "加入频道失败",
+    leftChannel: "已离开频道",
+    genTokenFailed: "生成 Token 失败，请检查 App ID 与 App Certificate",
+    getTokenFailed: "获取 Token 失败",
+  },
+  en: {
+    language: "Language",
+    localView: "Local view",
+    local: "Local",
+    settings: "Settings",
+    close: "Close",
+    join: "Join",
+    leave: "Leave",
+    video: "Video",
+    audio: "Audio",
+    enable: "Enable",
+    disable: "Disable",
+    cancel: "Cancel",
+    save: "Save",
+    appCertificate: "App Certificate (optional)",
+    userId: "User ID (optional)",
+    tokenLabel: "Token (optional)",
+    phAppId: "Enter App ID",
+    phAppCertificate: "Enter App Certificate",
+    phChannel: "Enter channel name",
+    phUserId: "Enter user ID",
+    phToken: "Enter token",
+    placeholderNotJoined: "Not joined. Click “Join” to start the call",
+    placeholderJoined: "Joined the channel, waiting for remote users…",
+    settingsSaved: "Settings saved",
+    needAppId: "Please fill in App ID in Settings first",
+    needChannel: "Please fill in Channel in Settings first",
+    joinSuccess: "Joined the channel successfully",
+    tokenError: "Invalid token, please check the Token",
+    joinFailed: "Failed to join the channel",
+    leftChannel: "Left the channel",
+    genTokenFailed: "Failed to generate token, please check App ID and App Certificate",
+    getTokenFailed: "Failed to fetch token",
+  },
+};
+
+function getLang() {
+  const saved = getOptionsFromLocal().language;
+  if (saved === "en" || saved === "zh-CN") return saved;
+  return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+}
+
+function t(key) {
+  const lang = getLang();
+  return (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
+}
+
+function applyI18n() {
+  const lang = getLang();
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const text = dict[key];
+    if (text == null) return;
+    const attrs = el.getAttribute("data-i18n-attr");
+    if (attrs) {
+      attrs.split(",").forEach((a) => el.setAttribute(a.trim(), text));
+    } else {
+      el.textContent = text;
+    }
+  });
+  $("#lang-select").val(lang);
+}
+
+function setLang(lang) {
+  setOptionsToLocal({ language: lang });
+  options = { ...options, language: lang };
+  applyI18n();
+  refreshPlaceholder();
+}
+
 function escapeHTML(unsafeText) {
   const elem = document.createElement("div");
   elem.innerText = unsafeText == null ? "" : String(unsafeText);
@@ -69,7 +177,7 @@ async function agoraGetAppData(config) {
       body: JSON.stringify(data),
     }).then((r) => r.json())) || {};
   if (resp.code != 0) {
-    const msg = "生成 Token 失败，请检查 App ID 与 App Certificate";
+    const msg = t("genTokenFailed");
     message.error(msg);
     throw new Error(msg);
   }
@@ -81,7 +189,7 @@ async function fetchAndApplyToken() {
   try {
     const resp = await fetch(TOKEN_URL).then((r) => r.json());
     if (resp.code !== 200 || !resp.data || !resp.data.token) {
-      throw new Error(resp.msg || "获取 Token 失败");
+      throw new Error(resp.msg || t("getTokenFailed"));
     }
     const token = resp.data.token;
     setOptionsToLocal({ token });
@@ -89,7 +197,7 @@ async function fetchAndApplyToken() {
     $("#token").val(token);
   } catch (err) {
     console.error(err);
-    message.error(err.message || "获取 Token 失败");
+    message.error(err.message || t("getTokenFailed"));
   }
 }
 
@@ -123,7 +231,7 @@ $("#save-settings").click(function () {
   };
   setOptionsToLocal(next);
   options = { ...options, ...next };
-  message.success("设置已保存");
+  message.success(t("settingsSaved"));
 });
 
 // ===================== local view toggle =====================
@@ -155,7 +263,7 @@ function refreshPlaceholder() {
   } else {
     $ph.removeClass("hide");
     $("#stage-placeholder-text").text(
-      joined ? "已加入频道，等待远端用户…" : "未加入频道，点击「加入」开始通话",
+      joined ? t("placeholderJoined") : t("placeholderNotJoined"),
     );
   }
 }
@@ -167,11 +275,11 @@ $("#host-join").click(async function () {
   const formToken = $("#token").val().trim();
 
   if (!options.appid) {
-    message.warning("请先在「设置」中填写 App ID");
+    message.warning(t("needAppId"));
     return;
   }
   if (!options.channel) {
-    message.warning("请先在「设置」中填写 Channel");
+    message.warning(t("needChannel"));
     return;
   }
 
@@ -179,13 +287,13 @@ $("#host-join").click(async function () {
   try {
     options.token = formToken || (await agoraGetAppData(options)) || null;
     await join();
-    message.success("加入频道成功");
+    message.success(t("joinSuccess"));
   } catch (error) {
     console.error(error);
     if (error.code === "CAN_NOT_GET_GATEWAY_SERVER") {
-      message.error("Token 错误，请检查 Token 参数");
+      message.error(t("tokenError"));
     } else {
-      message.error(error.message || "加入频道失败");
+      message.error(error.message || t("joinFailed"));
     }
     $("#host-join").attr("disabled", false);
     return;
@@ -210,7 +318,7 @@ $("#leave").click(async function () {
   $("#audio-set-enabled").attr("disabled", true);
   $("#audio-set-disable").attr("disabled", true);
   refreshPlaceholder();
-  message.info("已离开频道");
+  message.info(t("leftChannel"));
 });
 
 async function join() {
@@ -340,7 +448,12 @@ $(function () {
     setOptionsToLocal(defaults);
     options = { ...options, ...defaults };
   }
+  applyI18n();
   fillSettingsForm();
   refreshPlaceholder();
   fetchAndApplyToken();
+
+  $("#lang-select").change(function () {
+    setLang(this.value === "en" ? "en" : "zh-CN");
+  });
 });
