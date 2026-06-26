@@ -50,6 +50,13 @@ let MENU_LIST = [
       enDocUrl: "https://docs.agora.io/en/video-calling/get-started/get-started-sdk?platform=web",
       githubUrl:
         "https://github.com/AgoraIO/API-Examples-Web/tree/main/src/example/quickStart/videoAndVoiceCalling",
+    },
+    {
+      name: "inmoCustomCall",
+      url: `${ORIGIN_URL}/example/quickStart/inmoCustomCall/index.html`,
+      zhDocUrl: "https://doc.shengwang.cn/doc/rtc/javascript/get-started/quick-start",
+      enDocUrl: "https://docs.agora.io/en/video-calling/get-started/get-started-sdk?platform=web",
+      githubUrl: "",
     }]
   },
   {

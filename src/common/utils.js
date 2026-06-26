@@ -455,7 +455,6 @@ function generateRandomString(length) {
 __queryUrlParams();
 __checkLocalOptions();
 __addAppInfoUI();
-__checkExperienceTime();
 generateRandomString(6);
 
 

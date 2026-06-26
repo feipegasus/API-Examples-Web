@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="../../../assets/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>INMO Custom Call -- Agora</title>
+    <link rel="stylesheet" href="../../../assets/bootstrap.min.css" />
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #1a1d24;
+        --panel-2: #11141a;
+        --border: #2a2f3a;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      .app { display: flex; flex-direction: column; height: 100vh; }
+
+      /* ---------- header ---------- */
+      .app-header {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; padding: 12px 20px;
+        background: var(--panel); border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .app-title { font-size: 18px; font-weight: 600; letter-spacing: .3px; }
+      .header-actions { display: flex; align-items: center; gap: 18px; }
+      .local-toggle { display: flex; align-items: center; gap: 8px; margin: 0; }
+      .local-toggle .form-check-input { cursor: pointer; }
+      .local-toggle .form-check-label { color: var(--muted); font-size: 14px; cursor: pointer; user-select: none; }
+      .btn-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 38px; height: 38px; padding: 0; font-size: 18px; line-height: 1;
+        color: var(--text); background: transparent;
+        border: 1px solid var(--border); border-radius: 8px;
+      }
+      .btn-icon:hover { background: #232733; color: var(--text); }
+
+      /* ---------- video stage (grid) ---------- */
+      .video-stage {
+        display: grid;
+        grid-template-columns: 1fr;          /* 默认：仅远端铺满 */
+        gap: 6px;
+        flex: 1; min-height: 0;
+        overflow: hidden; background: #000;
+      }
+      .video-stage.show-local { grid-template-columns: 1fr 1fr; }  /* 双栏并排 */
+
+      .pane { position: relative; overflow: hidden; background: var(--panel-2); }
+      .local-pane.hide { display: none; }
+
+      .remote-playerlist {
+        display: grid; gap: 6px; width: 100%; height: 100%;
+        grid-template-columns: 1fr;
+      }
+      .remote-playerlist:has(> *:nth-child(2)) { grid-template-columns: 1fr 1fr; }
+      .remote-playerlist:has(> *:nth-child(5)) { grid-template-columns: 1fr 1fr 1fr; }
+
+      .player { position: relative; width: 100%; height: 100%; background: var(--panel-2); overflow: hidden; }
+      .player video, .pane video { width: 100% !important; height: 100% !important; object-fit: cover; }
+
+      .pane-label {
+        position: absolute; left: 10px; top: 8px; z-index: 2;
+        padding: 2px 8px; border-radius: 6px;
+        background: rgba(0,0,0,.45); color: #fff; font-size: 12px;
+      }
+      .remote-player-name, .local-player-name {
+        position: absolute; left: 10px; bottom: 8px; z-index: 2;
+        padding: 2px 8px; border-radius: 6px;
+        background: rgba(0,0,0,.55); color: #fff; font-size: 12px;
+      }
+
+      .stage-placeholder {
+        position: absolute; inset: 0; z-index: 1;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 10px; color: var(--muted); pointer-events: none;
+      }
+      .stage-placeholder .ph-icon { font-size: 46px; opacity: .5; }
+      .stage-placeholder.hide { display: none; }
+
+      /* ---------- controls ---------- */
+      .controls {
+        display: flex; flex-direction: column; gap: 14px;
+        padding: 16px 20px; background: var(--panel);
+        border-top: 1px solid var(--border); flex-shrink: 0;
+      }
+      .controls-primary { display: flex; gap: 14px; justify-content: center; }
+      .btn-join, .btn-leave { min-width: 150px; font-weight: 600; font-size: 16px; }
+      .controls-secondary { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+      .ctrl-group { display: flex; align-items: center; gap: 8px; }
+      .ctrl-label { color: var(--muted); font-size: 13px; }
+
+      /* ---------- toast ---------- */
+      #toast-host { position: fixed; top: 16px; right: 16px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; }
+      #toast-host .alert { margin: 0; min-width: 240px; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+
+      /* ---------- settings modal ---------- */
+      .modal-content.settings { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+      .settings .modal-header, .settings .modal-footer { border-color: var(--border); }
+      .settings .form-label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+      .settings .form-control { background: var(--panel-2); border-color: var(--border); color: var(--text); }
+      .settings .form-control:focus {
+        background: var(--panel-2); color: var(--text);
+        border-color: #0d6efd; box-shadow: 0 0 0 .2rem rgba(13,110,253,.25);
+      }
+      .settings .btn-close { filter: invert(1) grayscale(1) brightness(2); }
+
+      /* ---------- responsive ---------- */
+      @media (max-width: 576px) {
+        .video-stage.show-local { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+        .btn-join, .btn-leave { min-width: 110px; font-size: 15px; }
+        .controls-secondary { gap: 18px; }
+        .app-title { font-size: 16px; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- ===== header ===== -->
+      <header class="app-header">
+        <h1 class="app-title">INMO Call</h1>
+        <div class="header-actions">
+          <div class="form-check form-switch local-toggle">
+            <input class="form-check-input" type="checkbox" role="switch" id="toggle-local" />
+            <label class="form-check-label" for="toggle-local">本地画面</label>
+          </div>
+          <button
+            id="open-settings" class="btn-icon" type="button"
+            title="设置" aria-label="设置"
+            data-bs-toggle="modal" data-bs-target="#settings-modal"
+          >&#9881;</button>
+        </div>
+      </header>
+
+      <!-- ===== video stage ===== -->
+      <main class="video-stage" id="video-stage">
+        <!-- local pane, hidden by default -->
+        <div id="local-player" class="pane local-pane hide">
+          <div class="pane-label">本地</div>
+          <div class="local-player-name" id="local-player-name"></div>
+        </div>
+
+        <!-- remote pane -->
+        <div class="pane remote-pane">
+          <div id="remote-playerlist" class="remote-playerlist"></div>
+          <div id="stage-placeholder" class="stage-placeholder">
+            <div class="ph-icon">&#128247;</div>
+            <div id="stage-placeholder-text">未加入频道，点击「加入」开始通话</div>
+          </div>
+        </div>
+      </main>
+
+      <!-- ===== controls ===== -->
+      <footer class="controls">
+        <div class="controls-primary">
+          <button id="host-join" type="button" class="btn btn-success btn-lg btn-join">加入</button>
+          <button id="leave" type="button" class="btn btn-danger btn-lg btn-leave" disabled>离开</button>
+        </div>
+        <div class="controls-secondary">
+          <div class="ctrl-group">
+            <span class="ctrl-label">视频</span>
+            <button type="button" id="video-set-enabled" class="btn btn-outline-light btn-sm" disabled>开启</button>
+            <button type="button" id="video-set-disable" class="btn btn-outline-light btn-sm" disabled>关闭</button>
+          </div>
+          <div class="ctrl-group">
+            <span class="ctrl-label">音频</span>
+            <button type="button" id="audio-set-enabled" class="btn btn-outline-light btn-sm" disabled>开启</button>
+            <button type="button" id="audio-set-disable" class="btn btn-outline-light btn-sm" disabled>关闭</button>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <!-- ===== toast host ===== -->
+    <div id="toast-host"></div>
+
+    <!-- ===== settings modal ===== -->
+    <div class="modal fade" id="settings-modal" tabindex="-1" aria-labelledby="settings-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content settings">
+          <div class="modal-header">
+            <h5 class="modal-title" id="settings-title">设置</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="appid">App ID</label>
+              <input class="form-control" id="appid" type="text" placeholder="请输入 App ID" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="certificate">App Certificate（可选）</label>
+              <input class="form-control" id="certificate" type="text" placeholder="请输入 App Certificate" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="channel">Channel</label>
+              <input class="form-control" id="channel" type="text" placeholder="请输入频道名" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="uid">User ID（可选）</label>
+              <input
+                class="form-control" id="uid" type="text" inputmode="numeric"
+                onkeyup="this.value=this.value.replace(/[^0-9]/g,'')"
+                onafterpaste="this.value=this.value.replace(/[^0-9]/g,'')"
+                placeholder="请输入用户 ID"
+              />
+            </div>
+            <div class="mb-1">
+              <label class="form-label" for="token">Token（可选）</label>
+              <input class="form-control" id="token" type="text" placeholder="请输入 Token" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-light btn-sm" data-bs-dismiss="modal">取消</button>
+            <button type="button" id="save-settings" class="btn btn-primary btn-sm" data-bs-dismiss="modal">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="../../../assets/jquery-3.4.1.min.js"></script>
+    <script src="../../../assets/bootstrap.bundle.min.js"></script>
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+    <script src="./index.js"></script>
+  </body>
+</html>
