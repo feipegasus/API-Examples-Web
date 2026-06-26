@@ -1,0 +1,5 @@
+{
+  "buildCommand": "echo 'static site, no build'",
+  "outputDirectory": "src",
+  "cleanUrls": true
+}
