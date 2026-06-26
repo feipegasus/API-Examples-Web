@@ -3,7 +3,7 @@ const path = require("path");
 
 // change the port if necessary
 const PORT = 3001;
-const URL = `http://localhost:${PORT}/index.html`;
+const URL = `http://localhost:${PORT}/inmoCustomCall/index.html`;
 
 const dir = path.join(__dirname, "../src");
 const app = express();
