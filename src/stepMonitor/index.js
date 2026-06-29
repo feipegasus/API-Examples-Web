@@ -44,7 +44,8 @@ const I18N = {
     chooseFile: "选择文件",
     noFileChosen: "未选择文件",
     phStepNo: "请输入步骤号，如 1",
-    imageHint: "仅上传至服务端用于记录，本页只展示返回的路径，不渲染图片。",
+    imageHint: "上传后将在步骤卡缩略图与详情中展示现场图片。",
+    onSitePhoto: "现场照片",
     submit: "提交上报",
     submitting: "提交中…",
     cancel: "取消",
@@ -101,7 +102,8 @@ const I18N = {
     chooseFile: "Choose file",
     noFileChosen: "No file chosen",
     phStepNo: "Enter step number, e.g. 1",
-    imageHint: "Uploaded to the server for record only; this page shows the returned path, not the image.",
+    imageHint: "After upload, the on-site photo is shown on the step card thumbnail and in details.",
+    onSitePhoto: "On-site photo",
     submit: "Submit",
     submitting: "Submitting…",
     cancel: "Cancel",
@@ -312,6 +314,7 @@ function upsertStep(data) {
     step_no: key,
     step_status: data.step_status,
     image_path: data.image_path || data.image_url || null,
+    image_src: data.image_src || data.image_url || data.image_path || null,
     update_time: data.update_time || data.timestamp || new Date().toISOString(),
   });
   order.updated = new Date().toISOString();
@@ -533,6 +536,23 @@ function populateDetail() {
   if (currentDetailStep == null) return;
   document.getElementById("detail-step-no").textContent = currentDetailStep;
 
+  // 现场照片（来自当前工单该步骤的上报；独立于模板，无详情也显示）。
+  const order = getCurrentOrder();
+  const step = order ? order.steps.get(String(currentDetailStep)) : null;
+  const photoWrap = document.getElementById("detail-photo");
+  if (photoWrap) {
+    if (step && step.image_src) {
+      const imgEl = document.getElementById("detail-photo-img");
+      imgEl.src = step.image_src;
+      imgEl.onerror = () => { photoWrap.style.display = "none"; };
+      document.getElementById("detail-photo-link").href = step.image_src;
+      document.getElementById("detail-photo-cap").textContent = step.image_path || "";
+      photoWrap.style.display = "";
+    } else {
+      photoWrap.style.display = "none";
+    }
+  }
+
   const proc = getProcedure(currentDetailStep);
   const content = document.getElementById("detail-content");
   const emptyEl = document.getElementById("detail-empty");
@@ -628,11 +648,20 @@ function render() {
   list.innerHTML = items
     .map((it) => {
       const s = normalizeStatus(it.step_status);
-      const img = it.image_path
-        ? `<div class="step-image" title="${escapeHTML(it.image_path)}">
+      let img;
+      if (it.image_src) {
+        img = `<div class="step-image" title="${escapeHTML(it.image_path || "")}">
+             <img class="step-thumb" src="${escapeHTML(it.image_src)}" alt=""
+                  loading="lazy" onerror="this.remove()" />
+             <span class="path">${escapeHTML(it.image_path || t("onSitePhoto"))}</span>
+           </div>`;
+      } else if (it.image_path) {
+        img = `<div class="step-image" title="${escapeHTML(it.image_path)}">
              <span>&#128206;</span><span class="path">${escapeHTML(it.image_path)}</span>
-           </div>`
-        : `<div class="step-image none"><span>&#9898;</span><span>${escapeHTML(t("noImage"))}</span></div>`;
+           </div>`;
+      } else {
+        img = `<div class="step-image none"><span>&#9898;</span><span>${escapeHTML(t("noImage"))}</span></div>`;
+      }
       return `
         <div class="step-card s-${s}" data-step="${escapeHTML(it.step_no)}"
              role="button" tabindex="0" title="${escapeHTML(t("viewDetail"))}">
@@ -669,7 +698,7 @@ function seedWorkOrders() {
       location: "车间 A · 1#驱动柜", assignee: "张工",
       created: iso(180),
       steps: [
-        { step_no: "1", step_status: "complete", image_path: "uploads/step1.jpg", update_time: iso(150) },
+        { step_no: "1", step_status: "complete", image_path: "uploads/step1.jpg", image_src: "./sample-onsite.svg", update_time: iso(150) },
         { step_no: "2", step_status: "complete", image_path: null, update_time: iso(120) },
         { step_no: "3", step_status: "in_progress", image_path: null, update_time: iso(20) },
       ],
@@ -688,7 +717,7 @@ function seedWorkOrders() {
       created: iso(300),
       steps: [
         { step_no: "1", step_status: "complete", image_path: null, update_time: iso(260) },
-        { step_no: "4", step_status: "error", image_path: "uploads/insulation.jpg", update_time: iso(40) },
+        { step_no: "4", step_status: "error", image_path: "uploads/insulation.jpg", image_src: "./sample-onsite.svg", update_time: iso(40) },
       ],
     },
   ];
@@ -839,6 +868,7 @@ async function submitReport() {
             step_no: stepNo,
             step_status: status,
             image_path: file ? `uploads/${file.name}` : null,
+            image_src: file ? URL.createObjectURL(file) : null,
             update_time: new Date().toISOString(),
           },
         }

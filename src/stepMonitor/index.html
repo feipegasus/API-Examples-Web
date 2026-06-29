@@ -224,6 +224,11 @@
       }
       .step-image.none { color: var(--text-3); }
       .step-image.none > span:first-child { opacity: 0.4; }
+      .step-thumb {
+        width: 40px; height: 40px; flex: 0 0 auto; object-fit: cover;
+        border-radius: var(--r-sm); border: 1px solid var(--hairline-strong);
+        background: var(--surface-3); cursor: pointer;
+      }
 
       .step-time {
         text-align: right; font-size: 11.5px; color: var(--text-3);
@@ -480,6 +485,12 @@
         font-size: 12px; color: var(--text-3); font-family: var(--font-mono);
       }
       .detail-empty { color: var(--text-3); padding: 48px 8px; text-align: center; font-size: 13.5px; line-height: 1.6; }
+      .detail-photo { margin-top: 22px; }
+      .detail-photo-img {
+        width: 100%; max-height: 280px; object-fit: contain; display: block;
+        border-radius: var(--r-md); border: 1px solid var(--hairline); background: var(--surface-2);
+      }
+      .detail-photo-cap { margin-top: 6px; font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
 
       /* ---------- responsive ---------- */
       @media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -727,6 +738,13 @@
         </div>
         <div id="detail-empty" class="detail-empty" data-i18n="detailNoContent" style="display: none">
           该步骤暂无详情说明（详情仅覆盖手册标准流程步骤 1–7）
+        </div>
+        <div id="detail-photo" class="detail-photo" style="display: none">
+          <div class="detail-section-label" data-i18n="onSitePhoto">现场照片</div>
+          <a id="detail-photo-link" href="#" target="_blank" rel="noopener">
+            <img id="detail-photo-img" class="detail-photo-img" alt="" />
+          </a>
+          <div id="detail-photo-cap" class="detail-photo-cap"></div>
         </div>
       </div>
     </aside>
