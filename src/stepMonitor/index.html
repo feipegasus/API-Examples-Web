@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="../assets/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Step Monitor -- INMO</title>
+    <link rel="stylesheet" href="../assets/bootstrap.min.css" />
+    <style>
+      /* ===== ABB Industrial Console · Design Tokens ===== */
+      :root {
+        --abb-red: #ff000f;
+        --abb-red-600: #d6000d;
+        --abb-red-700: #aa000a;
+
+        --bg-app: #0e1116;
+        --surface-1: #161b22;
+        --surface-2: #1c232c;
+        --surface-3: #232c37;
+        --hairline: #2a333f;
+        --hairline-strong: #364252;
+
+        --text-1: #f2f5f9;
+        --text-2: #aeb8c4;
+        --text-3: #6f7c8c;
+
+        /* safety semantic (manual: NOTICE / CAUTION / success / DANGER) */
+        --st-pending: #6f7c8c;
+        --st-progress: #ffb000;
+        --st-complete: #19c37d;
+        --st-error: #ff000f;
+        --st-pending-bg: rgba(111, 124, 140, 0.12);
+        --st-progress-bg: rgba(255, 176, 0, 0.12);
+        --st-complete-bg: rgba(25, 195, 125, 0.12);
+        --st-error-bg: rgba(255, 0, 15, 0.12);
+
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+        --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+          "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+        --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { min-height: 100%; }
+      body {
+        background:
+          radial-gradient(1200px 600px at 82% -12%, rgba(255, 0, 15, 0.06), transparent 60%),
+          var(--bg-app);
+        color: var(--text-1);
+        font-family: var(--font-stack);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .app-shell { max-width: 1080px; margin: 0 auto; padding: 24px 16px 40px; }
+
+      /* ---------- header ---------- */
+      .app-header {
+        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+        padding-bottom: 16px; border-bottom: 1px solid var(--hairline);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .brand-mark {
+        width: 40px; height: 40px; flex: 0 0 auto; border-radius: var(--r-sm);
+        background: linear-gradient(135deg, var(--abb-red), var(--abb-red-700));
+        display: grid; place-items: center;
+        box-shadow: var(--shadow-1), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      }
+      .brand-title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; line-height: 1.15; }
+      .brand-sub {
+        font-size: 11px; color: var(--text-3); letter-spacing: 0.5px;
+        text-transform: uppercase; white-space: nowrap;
+      }
+      .header-spacer { flex: 1 1 auto; }
+
+      .live-pill {
+        display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+        border-radius: 999px; background: var(--surface-2); border: 1px solid var(--hairline);
+        font-size: 12px; font-weight: 600; color: var(--text-2); letter-spacing: 0.3px;
+      }
+      .live-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: var(--st-complete);
+        animation: live-ping 2s ease-out infinite;
+      }
+      @keyframes live-ping {
+        0% { box-shadow: 0 0 0 0 rgba(25, 195, 125, 0.55); }
+        70% { box-shadow: 0 0 0 7px rgba(25, 195, 125, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(25, 195, 125, 0); }
+      }
+
+      .header-actions { display: flex; align-items: center; gap: 8px; }
+
+      /* ---------- controls ---------- */
+      .lang-mini {
+        width: auto; min-width: 96px; height: 38px;
+        background: var(--surface-2); border: 1px solid var(--hairline-strong); color: var(--text-1);
+        font-size: 13px; font-weight: 500; border-radius: var(--r-sm);
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23aeb8c4' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 0.65rem center; background-size: 13px 11px;
+      }
+      .lang-mini:focus { border-color: var(--abb-red); box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.18); }
+      .lang-mini option { background: var(--surface-2); color: var(--text-1); }
+
+      .btn-console {
+        height: 38px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600;
+        letter-spacing: 0.2px; padding: 0 16px; display: inline-flex; align-items: center; gap: 6px;
+        border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, transform 0.05s;
+        cursor: pointer; white-space: nowrap; text-decoration: none;
+      }
+      .btn-console:hover { text-decoration: none; }
+      .btn-console:active { transform: translateY(1px); }
+      .btn-console:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.25); }
+      .btn-primary-abb { background: var(--abb-red); color: #fff; }
+      .btn-primary-abb:hover { background: var(--abb-red-600); color: #fff; }
+      .btn-ghost { background: var(--surface-2); color: var(--text-2); border-color: var(--hairline-strong); }
+      .btn-ghost:hover { background: var(--surface-3); color: var(--text-1); }
+
+      /* ---------- overview ---------- */
+      .overview {
+        margin-top: 24px; background: var(--surface-1); border: 1px solid var(--hairline);
+        border-radius: var(--r-lg); padding: 24px; box-shadow: var(--shadow-1);
+      }
+      .overview-label {
+        font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+        color: var(--text-3); font-weight: 600;
+      }
+      .progress-readout {
+        font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+        font-size: 16px; font-weight: 600; color: var(--text-1); margin-top: 4px;
+      }
+      .progress-track {
+        margin-top: 16px; height: 10px; background: var(--surface-3); border-radius: 999px;
+        overflow: hidden; box-shadow: inset 0 0 0 1px var(--hairline);
+      }
+      .progress-track .progress-bar {
+        height: 100%; background: linear-gradient(90deg, var(--st-complete), #14a86a);
+        transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 999px;
+      }
+
+      /* ---------- stat grid ---------- */
+      .stat-grid { margin-top: 24px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .stat {
+        position: relative; background: var(--surface-2); border: 1px solid var(--hairline);
+        border-radius: var(--r-md); padding: 16px; overflow: hidden;
+      }
+      .stat::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--st-pending);
+      }
+      .stat-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+      .stat-glyph { width: 18px; height: 18px; flex: 0 0 auto; display: grid; place-items: center; color: var(--st-pending); }
+      .stat-num {
+        margin-top: 8px; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+        font-size: 30px; font-weight: 700; line-height: 1; color: var(--text-1);
+      }
+      .stat.is-pending::before { background: var(--st-pending); }
+      .stat.is-progress::before { background: var(--st-progress); }
+      .stat.is-progress .stat-glyph { color: var(--st-progress); }
+      .stat.is-progress .stat-num { color: var(--st-progress); }
+      .stat.is-complete::before { background: var(--st-complete); }
+      .stat.is-complete .stat-glyph { color: var(--st-complete); }
+      .stat.is-error::before { background: var(--st-error); }
+      .stat.is-error {
+        background: linear-gradient(180deg, var(--st-error-bg), var(--surface-2));
+        border-color: rgba(255, 0, 15, 0.4);
+      }
+      .stat.is-error .stat-glyph { color: var(--st-error); }
+      .stat.is-error .stat-num { color: var(--st-error); }
+      .stat.is-error .stat-head { color: #ff8a91; }
+
+      /* ---------- stream ---------- */
+      .stream-section { margin-top: 32px; }
+      .stream-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .stream-title { font-size: 14px; font-weight: 700; letter-spacing: 0.3px; color: var(--text-1); }
+      .stream-rule { flex: 1 1 auto; height: 1px; background: var(--hairline); }
+
+      .step-list { display: flex; flex-direction: column; gap: 12px; }
+
+      /* ----- step card (DOM hard-coded in index.js render()) ----- */
+      .step-card {
+        position: relative; display: grid; grid-template-columns: 72px 1fr auto auto;
+        align-items: center; gap: 16px; background: var(--surface-1); border: 1px solid var(--hairline);
+        border-left: 3px solid var(--st-pending); border-radius: var(--r-md); padding: 14px 16px;
+        box-shadow: var(--shadow-1); transition: border-color 0.2s, background 0.2s; cursor: pointer;
+      }
+      .step-card:hover { border-color: var(--hairline-strong); }
+      .step-card:focus-visible { outline: none; border-color: var(--abb-red); box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.2); }
+      .step-chevron { color: var(--text-3); font-size: 22px; line-height: 1; transition: transform 0.15s, color 0.15s; }
+      .step-card:hover .step-chevron { color: var(--text-1); transform: translateX(3px); }
+
+      .step-no {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 26px;
+        font-weight: 700; line-height: 1; color: var(--text-1);
+        border-right: 1px solid var(--hairline); padding-right: 16px; height: 100%;
+      }
+      .step-no small {
+        display: block; margin-top: 4px; font-family: var(--font-stack); font-size: 10px;
+        font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3);
+      }
+
+      .step-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+      .status-badge {
+        display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+        padding: 4px 10px 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        letter-spacing: 0.2px; border: 1px solid transparent;
+      }
+      .status-badge .dot { position: relative; width: 14px; height: 14px; flex: 0 0 auto; border-radius: 50%; display: inline-block; }
+      .status-badge .dot::after { content: ""; position: absolute; inset: 0; }
+
+      .step-image { font-size: 12.5px; color: var(--text-2); display: flex; align-items: center; gap: 6px; min-width: 0; }
+      .step-image > span:first-child { flex: 0 0 auto; font-size: 13px; opacity: 0.8; }
+      .step-image .path {
+        font-family: var(--font-mono); font-size: 12px; color: var(--text-1);
+        background: var(--surface-3); border: 1px solid var(--hairline); border-radius: var(--r-sm);
+        padding: 2px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+      }
+      .step-image.none { color: var(--text-3); }
+      .step-image.none > span:first-child { opacity: 0.4; }
+
+      .step-time {
+        text-align: right; font-size: 11.5px; color: var(--text-3);
+        font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap;
+      }
+      .step-time .abs { display: block; font-size: 10.5px; opacity: 0.7; margin-top: 2px; }
+
+      /* per-status theming (.s-${status}) */
+      .step-card.s-pending { border-left-color: var(--st-pending); }
+      .step-card.s-pending .status-badge { background: var(--st-pending-bg); color: #c4cdd8; border-color: rgba(111, 124, 140, 0.35); }
+      .step-card.s-pending .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--st-pending); }
+
+      .step-card.s-in_progress {
+        border-left-color: var(--st-progress);
+        background: linear-gradient(180deg, var(--st-progress-bg), var(--surface-1));
+        border-color: rgba(255, 176, 0, 0.35);
+      }
+      .step-card.s-in_progress .step-no { color: var(--st-progress); border-right-color: rgba(255, 176, 0, 0.25); }
+      .step-card.s-in_progress .status-badge { background: var(--st-progress-bg); color: #ffcf57; border-color: rgba(255, 176, 0, 0.45); }
+      .step-card.s-in_progress .dot { background: var(--st-progress); animation: pulse-ring 1.4s ease-out infinite; }
+      @keyframes pulse-ring {
+        0% { box-shadow: 0 0 0 0 rgba(255, 176, 0, 0.6); }
+        70% { box-shadow: 0 0 0 8px rgba(255, 176, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 176, 0, 0); }
+      }
+
+      .step-card.s-complete { border-left-color: var(--st-complete); }
+      .step-card.s-complete .status-badge { background: var(--st-complete-bg); color: #5fe0a8; border-color: rgba(25, 195, 125, 0.4); }
+      /* complete = check shape (not color-only) */
+      .step-card.s-complete .dot { background: var(--st-complete); }
+      .step-card.s-complete .dot::after {
+        width: 4px; height: 7px; border: solid #0a0d11; border-width: 0 2px 2px 0;
+        transform: translate(5px, 2.5px) rotate(45deg);
+      }
+
+      /* error = DANGER: triangle glyph + alarm card */
+      .step-card.s-error {
+        border-left-width: 4px; border-left-color: var(--st-error);
+        background: linear-gradient(180deg, var(--st-error-bg), var(--surface-1));
+        border-color: rgba(255, 0, 15, 0.5);
+        box-shadow: var(--shadow-1), 0 0 0 1px rgba(255, 0, 15, 0.15), 0 0 24px rgba(255, 0, 15, 0.12);
+      }
+      .step-card.s-error .step-no { color: #ff5a64; border-right-color: rgba(255, 0, 15, 0.25); }
+      .step-card.s-error .status-badge {
+        background: var(--st-error); color: #fff; border-color: var(--abb-red-700);
+        animation: alarm-blink 1.2s steps(1, end) infinite;
+      }
+      @keyframes alarm-blink { 0%, 60% { opacity: 1; } 80% { opacity: 0.55; } 100% { opacity: 1; } }
+      /* error dot = warning triangle */
+      .step-card.s-error .dot { background: transparent; width: 16px; height: 16px; }
+      .step-card.s-error .dot::after {
+        width: 0; height: 0; left: 0; right: 0; margin: auto; top: 1px;
+        border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 14px solid #fff;
+      }
+      .step-card.s-error .dot::before {
+        content: "!"; position: absolute; left: 0; right: 0; bottom: -1px; text-align: center;
+        font-size: 9px; font-weight: 900; line-height: 1; color: var(--st-error); z-index: 1;
+      }
+
+      /* ---------- empty / listening ---------- */
+      .empty-state {
+        margin-top: 16px; border: 1px dashed var(--hairline-strong); border-radius: var(--r-lg);
+        background:
+          repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.012) 0 12px, transparent 12px 24px),
+          var(--surface-1);
+        padding: 56px 24px; text-align: center;
+      }
+      .empty-state.hide { display: none; }
+      .empty-icon {
+        width: 56px; height: 56px; margin: 0 auto 16px; border-radius: var(--r-md);
+        background: var(--surface-3); display: grid; place-items: center; color: var(--text-3); font-size: 26px;
+      }
+      .empty-title { font-size: 15px; font-weight: 600; color: var(--text-2); }
+      .listening-bar {
+        margin: 16px auto 0; width: 160px; height: 3px; border-radius: 999px;
+        background: var(--surface-3); overflow: hidden; position: relative;
+      }
+      .listening-bar::after {
+        content: ""; position: absolute; top: 0; left: -40%; width: 40%; height: 100%;
+        background: linear-gradient(90deg, transparent, var(--abb-red), transparent);
+        animation: scan 1.8s linear infinite;
+      }
+      @keyframes scan { 0% { left: -40%; } 100% { left: 100%; } }
+
+      /* ---------- footer ---------- */
+      .app-footer {
+        margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--hairline);
+        font-size: 11.5px; color: var(--text-3); display: flex; justify-content: space-between;
+        flex-wrap: wrap; gap: 8px;
+      }
+
+      /* ---------- toast ---------- */
+      #toast-host { position: fixed; top: 16px; right: 16px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; }
+      #toast-host .alert { margin: 0; min-width: 240px; box-shadow: var(--shadow-2); }
+
+      /* ---------- modal (BS5, console tone) ---------- */
+      .modal-content.report { background: var(--surface-1); color: var(--text-1); border: 1px solid var(--hairline-strong); border-radius: var(--r-lg); }
+      .report .modal-header, .report .modal-footer { border-color: var(--hairline); }
+      .report .form-label { color: var(--text-2); font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+      .report .form-control, .report .form-select {
+        background: var(--surface-2); border-color: var(--hairline-strong); color: var(--text-1);
+      }
+      .report .form-control:focus, .report .form-select:focus {
+        background: var(--surface-2); color: var(--text-1);
+        border-color: var(--abb-red); box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.18);
+      }
+      .report .form-select {
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23aeb8c4' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+        background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 16px 12px;
+      }
+      .report .form-select option { background: var(--surface-2); color: var(--text-1); }
+      .report .form-control::placeholder { color: var(--text-3); }
+      .report .btn-close { filter: invert(1) grayscale(1) brightness(2); }
+      .report .form-text { color: var(--text-3); font-size: 11px; margin-top: 6px; }
+
+      /* custom file picker (native button text is browser-locale-bound, so we hide it) */
+      .file-native {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+      }
+      .file-picker { display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
+      .file-picker-btn {
+        flex: 0 0 auto; height: 36px; padding: 0 14px; display: inline-flex; align-items: center;
+        border-radius: var(--r-sm); background: var(--surface-3); border: 1px solid var(--hairline-strong);
+        color: var(--text-1); font-size: 13px; font-weight: 600; transition: background 0.15s, border-color 0.15s;
+      }
+      .file-picker:hover .file-picker-btn { background: #2b3744; border-color: var(--abb-red); }
+      .file-native:focus-visible + .file-picker .file-picker-btn {
+        border-color: var(--abb-red); box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.18); outline: none;
+      }
+      .file-picker-name {
+        min-width: 0; font-size: 12.5px; color: var(--text-3);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .file-picker-name.has-file { color: var(--text-1); font-family: var(--font-mono); font-size: 12px; }
+
+      /* ---------- view toggle ---------- */
+      .monitor-back { display: none; }
+      .app-shell[data-view="monitor"] .monitor-back { display: inline-flex; }
+      .app-shell[data-view="orders"] .monitor-only { display: none; }
+
+      /* ---------- work order list ---------- */
+      .order-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+      .order-card {
+        position: relative; display: flex; flex-direction: column; gap: 10px;
+        background: var(--surface-1); border: 1px solid var(--hairline);
+        border-left: 3px solid var(--st-pending); border-radius: var(--r-md);
+        padding: 16px; box-shadow: var(--shadow-1); cursor: pointer;
+        transition: border-color 0.2s;
+      }
+      .order-card:hover { border-color: var(--hairline-strong); }
+      .order-card:focus-visible { outline: none; border-color: var(--abb-red); box-shadow: 0 0 0 3px rgba(255, 0, 15, 0.2); }
+      .order-card.s-in_progress { border-left-color: var(--st-progress); }
+      .order-card.s-complete { border-left-color: var(--st-complete); }
+      .order-card.s-error { border-left-color: var(--st-error); }
+      .order-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .order-no { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--text-1); letter-spacing: 0.3px; }
+      .order-device { font-size: 14px; font-weight: 600; color: var(--text-1); }
+      .order-meta { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-2); }
+      .order-meta b { color: var(--text-3); font-weight: 600; margin-right: 4px; }
+      .order-progress-line { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+      .order-progress-text { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); flex: 0 0 auto; }
+      .order-progress-track { flex: 1 1 auto; height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--hairline); }
+      .order-progress-bar { height: 100%; background: linear-gradient(90deg, var(--st-complete), #14a86a); border-radius: 999px; transition: width 0.4s; }
+      .order-foot { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+      .order-enter { font-size: 20px; color: var(--text-3); }
+      .order-card:hover .order-enter { color: var(--text-1); }
+
+      /* ---------- order info bar (monitor view) ---------- */
+      .order-bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+        background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-md);
+        padding: 12px 16px; margin-top: 20px;
+      }
+      .ob-left { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
+      .ob-no { font-family: var(--font-mono); font-weight: 700; font-size: 15px; color: var(--text-1); }
+      .ob-device { font-size: 14px; font-weight: 600; color: var(--text-1); }
+      .ob-meta { font-size: 12px; color: var(--text-3); }
+
+      /* badge variants carried on the badge itself (order list + order bar) */
+      .status-badge.s-pending { background: var(--st-pending-bg); color: #c4cdd8; border: 1px solid rgba(111, 124, 140, 0.35); }
+      .status-badge.s-pending .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--st-pending); }
+      .status-badge.s-in_progress { background: var(--st-progress-bg); color: #ffcf57; border: 1px solid rgba(255, 176, 0, 0.45); }
+      .status-badge.s-in_progress .dot { background: var(--st-progress); }
+      .status-badge.s-complete { background: var(--st-complete-bg); color: #5fe0a8; border: 1px solid rgba(25, 195, 125, 0.4); }
+      .status-badge.s-complete .dot { background: var(--st-complete); }
+      .status-badge.s-error { background: var(--st-error); color: #fff; border: 1px solid var(--abb-red-700); }
+      .status-badge.s-error .dot { background: #fff; }
+
+      /* ---------- detail drawer ---------- */
+      .detail-backdrop {
+        position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 2000;
+        opacity: 0; visibility: hidden; transition: opacity 0.25s, visibility 0.25s;
+      }
+      .detail-backdrop.open { opacity: 1; visibility: visible; }
+      .detail-drawer {
+        position: fixed; top: 0; right: 0; height: 100%; width: 420px; max-width: 92vw;
+        background: var(--surface-1); border-left: 1px solid var(--hairline-strong);
+        box-shadow: -12px 0 40px rgba(0, 0, 0, 0.5); z-index: 2001;
+        display: flex; flex-direction: column;
+        transform: translateX(100%); transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .detail-drawer.open { transform: translateX(0); }
+      .detail-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 18px 24px; border-bottom: 1px solid var(--hairline); flex-shrink: 0;
+      }
+      .detail-eyebrow {
+        display: flex; align-items: center; gap: 10px; font-size: 12px;
+        text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-3); font-weight: 600;
+      }
+      .detail-step-badge {
+        width: 30px; height: 30px; border-radius: 8px; background: var(--abb-red); color: #fff;
+        display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px;
+      }
+      .detail-close {
+        background: transparent; border: none; color: var(--text-2); font-size: 26px; line-height: 1;
+        cursor: pointer; width: 32px; height: 32px; border-radius: var(--r-sm);
+      }
+      .detail-close:hover { background: var(--surface-3); color: var(--text-1); }
+      .detail-body { padding: 22px 24px 32px; overflow-y: auto; }
+
+      .safety-badge {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--r-sm);
+        font-size: 11.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+        border: 1px solid transparent;
+      }
+      .safety-badge::before { content: "\26A0"; font-size: 12px; }
+      .sev-danger { background: rgba(255, 0, 15, 0.16); color: #ff7b7e; border-color: rgba(255, 0, 15, 0.45); }
+      .sev-warning { background: rgba(255, 176, 0, 0.16); color: #ffcf57; border-color: rgba(255, 176, 0, 0.45); }
+      .sev-caution { background: rgba(255, 212, 0, 0.16); color: #ffe06b; border-color: rgba(255, 212, 0, 0.4); }
+      .sev-notice { background: rgba(59, 130, 246, 0.16); color: #7eb0ff; border-color: rgba(59, 130, 246, 0.45); }
+      .sev-notice::before { content: "\2139"; }
+
+      .detail-h { font-size: 20px; font-weight: 700; margin: 14px 0 8px; line-height: 1.25; }
+      .detail-summary { color: var(--text-2); font-size: 13.5px; line-height: 1.6; margin-bottom: 22px; }
+      .detail-section-label {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+        color: var(--text-3); font-weight: 700; margin-bottom: 12px;
+      }
+      .detail-points { list-style: none; counter-reset: dp; display: flex; flex-direction: column; gap: 12px; padding: 0; margin: 0; }
+      .detail-points li {
+        position: relative; padding-left: 32px; font-size: 13.5px; line-height: 1.6;
+        color: var(--text-1); counter-increment: dp;
+      }
+      .detail-points li::before {
+        content: counter(dp); position: absolute; left: 0; top: 1px; width: 21px; height: 21px;
+        border-radius: 50%; background: var(--surface-3); border: 1px solid var(--hairline-strong);
+        color: var(--text-2); font-size: 11px; font-weight: 700; display: grid; place-items: center;
+        font-family: var(--font-mono);
+      }
+      .detail-ref {
+        margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--hairline);
+        font-size: 12px; color: var(--text-3); font-family: var(--font-mono);
+      }
+      .detail-empty { color: var(--text-3); padding: 48px 8px; text-align: center; font-size: 13.5px; line-height: 1.6; }
+
+      /* ---------- responsive ---------- */
+      @media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 576px) {
+        .app-shell { padding: 16px 12px 32px; }
+        .brand-title { font-size: 15px; }
+        .header-actions { flex: 1 1 100%; }
+        .header-actions .btn-console, .header-actions .lang-mini { flex: 1 1 0; min-width: 0; justify-content: center; }
+        .overview { padding: 16px; }
+        .stat-num { font-size: 26px; }
+        .step-card { grid-template-columns: 48px 1fr; gap: 12px; padding: 12px; }
+        .step-no { font-size: 20px; padding-right: 12px; }
+        .step-time { grid-column: 1 / -1; text-align: left; padding-left: 60px; }
+        .step-chevron { display: none; }
+        .detail-drawer { width: 100%; max-width: 100%; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app-shell" id="app-shell" data-view="orders">
+      <!-- ===== header ===== -->
+      <header class="app-header">
+        <button id="back-to-orders" type="button" class="btn-console btn-ghost monitor-back" aria-label="back">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span data-i18n="backToList">返回工单</span>
+        </button>
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M4 7h16M4 12h16M4 17h10" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-title" data-i18n="title">步骤监控</div>
+            <div class="brand-sub">ABB · FIELD OPERATION MONITOR</div>
+          </div>
+        </div>
+
+        <div class="header-spacer"></div>
+
+        <span class="live-pill">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span data-i18n="live">实时</span>
+        </span>
+
+        <div class="header-actions">
+          <a href="../inmoCustomCall/index.html"
+             class="btn-console btn-ghost" data-i18n-attr="title" data-i18n="remoteAssist" title="远程协助">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="2" y="6" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.8" />
+              <path d="M15 10l6-3v10l-6-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n="remoteAssist">远程协助</span>
+          </a>
+          <select id="lang-select" class="form-select lang-mini" aria-label="Language">
+            <option value="zh-CN">简体中文</option>
+            <option value="en">English</option>
+          </select>
+          <button id="open-report" type="button" class="btn-console btn-primary-abb monitor-only"
+                  data-bs-toggle="modal" data-bs-target="#report-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
+            </svg>
+            <span data-i18n="report">上报状态</span>
+          </button>
+          <button id="clear-all" type="button" class="btn-console btn-ghost monitor-only">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13"
+                    stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n="clear">清空</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ===== VIEW: work orders ===== -->
+      <section id="view-orders">
+        <section class="stream-section">
+          <div class="stream-head">
+            <span class="stream-title" data-i18n="workOrders">工单</span>
+            <span class="stream-rule"></span>
+          </div>
+          <div id="order-list" class="order-list"></div>
+          <div id="orders-empty" class="empty-state hide">
+            <div class="empty-icon" aria-hidden="true">&#128203;</div>
+            <div class="empty-title" data-i18n="ordersEmpty">暂无工单</div>
+          </div>
+        </section>
+      </section>
+
+      <!-- ===== VIEW: step monitor ===== -->
+      <section id="view-monitor" style="display: none">
+        <div id="order-bar" class="order-bar">
+          <div class="ob-left">
+            <span class="ob-no" id="ob-no"></span>
+            <span class="ob-device" id="ob-device"></span>
+            <span class="ob-meta" id="ob-meta"></span>
+          </div>
+          <span class="status-badge" id="ob-status"></span>
+        </div>
+
+      <!-- ===== overview ===== -->
+      <section class="overview" aria-label="overview">
+        <div class="overview-label" data-i18n="overallProgress">总体进度（已完成 / 总数）</div>
+        <div id="progress-text" class="progress-readout" role="status" aria-live="polite">0 / 0</div>
+
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+          <div id="progress-bar" class="progress-bar" style="width: 0%" aria-valuenow="0"></div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat is-pending">
+            <div class="stat-head">
+              <span class="stat-glyph" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" /></svg>
+              </span>
+              <span data-i18n="statusPending">待处理</span>
+            </div>
+            <div id="count-pending" class="stat-num">0</div>
+          </div>
+
+          <div class="stat is-progress">
+            <div class="stat-head">
+              <span class="stat-glyph" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" /><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+              </span>
+              <span data-i18n="statusInProgress">进行中</span>
+            </div>
+            <div id="count-in_progress" class="stat-num">0</div>
+          </div>
+
+          <div class="stat is-complete">
+            <div class="stat-head">
+              <span class="stat-glyph" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" /><path d="M8.5 12.5l2.5 2.5 4.5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </span>
+              <span data-i18n="statusComplete">已完成</span>
+            </div>
+            <div id="count-complete" class="stat-num">0</div>
+          </div>
+
+          <div class="stat is-error">
+            <div class="stat-head">
+              <span class="stat-glyph" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 3l9 16H3z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /><path d="M12 9v5M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+              </span>
+              <span data-i18n="statusError">异常</span>
+            </div>
+            <div id="count-error" class="stat-num">0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== stream ===== -->
+      <section class="stream-section">
+        <div class="stream-head">
+          <span class="stream-title" data-i18n="stream">作业流</span>
+          <span class="stream-rule"></span>
+        </div>
+
+        <!-- step cards injected by index.js render() -->
+        <div id="step-list" class="step-list" aria-live="polite"></div>
+
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon" aria-hidden="true">&#128203;</div>
+          <div class="empty-title" data-i18n="emptyText">暂无步骤上报，点击「上报状态」模拟现场上报</div>
+        </div>
+      </section>
+      </section>
+      <!-- /view-monitor -->
+
+      <footer class="app-footer">
+        <span data-i18n="footerNote">数据按 step_no 实时累加 · 仅本地展示</span>
+        <span>ABB SACE / SAFUR / JBR · HW Procedure</span>
+      </footer>
+    </div>
+
+    <!-- ===== toast host ===== -->
+    <div id="toast-host"></div>
+
+    <!-- ===== report modal ===== -->
+    <div class="modal fade" id="report-modal" tabindex="-1" aria-labelledby="report-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content report">
+          <div class="modal-header">
+            <h5 class="modal-title" id="report-title" data-i18n="reportTitle">上报步骤状态</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="f-step-no" data-i18n="fieldStepNo">步骤号 step_no</label>
+              <input class="form-control" id="f-step-no" type="text" inputmode="numeric"
+                     onkeyup="this.value=this.value.replace(/[^0-9]/g,'')"
+                     data-i18n-attr="placeholder" data-i18n="phStepNo" placeholder="请输入步骤号，如 1" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="f-step-status" data-i18n="fieldStatus">状态 step_status</label>
+              <select class="form-select" id="f-step-status">
+                <option value="pending" data-i18n="statusPending">待处理</option>
+                <option value="in_progress" data-i18n="statusInProgress">进行中</option>
+                <option value="complete" selected data-i18n="statusComplete">已完成</option>
+                <option value="error" data-i18n="statusError">异常</option>
+              </select>
+            </div>
+            <div class="mb-1">
+              <label class="form-label" for="f-image" data-i18n="fieldImage">现场图片 image（可选）</label>
+              <input class="file-native" id="f-image" type="file" accept="image/*" />
+              <label class="file-picker" for="f-image">
+                <span class="file-picker-btn" data-i18n="chooseFile">选择文件</span>
+                <span class="file-picker-name" id="f-image-name">未选择文件</span>
+              </label>
+              <div class="form-text" data-i18n="imageHint">仅上传至服务端用于记录，本页只展示返回的路径，不渲染图片。</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-console btn-ghost" data-bs-dismiss="modal" data-i18n="cancel">取消</button>
+            <button type="button" id="submit-report" class="btn-console btn-primary-abb" data-i18n="submit">提交上报</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== detail drawer ===== -->
+    <div id="detail-backdrop" class="detail-backdrop"></div>
+    <aside id="detail-drawer" class="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <header class="detail-head">
+        <div class="detail-eyebrow">
+          <span class="detail-step-badge" id="detail-step-no">1</span>
+          <span data-i18n="detailTitle">步骤详情</span>
+        </div>
+        <button type="button" id="detail-close" class="detail-close" aria-label="close">&times;</button>
+      </header>
+      <div class="detail-body">
+        <div id="detail-content">
+          <span class="safety-badge" id="detail-safety"></span>
+          <h2 class="detail-h" id="detail-title"></h2>
+          <p class="detail-summary" id="detail-summary"></p>
+          <div class="detail-section-label" data-i18n="detailKeyPoints">关键要点</div>
+          <ol class="detail-points" id="detail-points"></ol>
+          <div class="detail-ref">
+            <span data-i18n="detailReference">手册出处</span>：<span id="detail-ref"></span>
+          </div>
+        </div>
+        <div id="detail-empty" class="detail-empty" data-i18n="detailNoContent" style="display: none">
+          该步骤暂无详情说明（详情仅覆盖手册标准流程步骤 1–7）
+        </div>
+      </div>
+    </aside>
+
+    <script src="../assets/jquery-3.4.1.min.js"></script>
+    <script src="../assets/bootstrap.bundle.min.js"></script>
+    <script src="./index.js"></script>
+  </body>
+</html>

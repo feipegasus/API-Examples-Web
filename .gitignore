@@ -6,3 +6,5 @@ dist-ssr
 .vercel
 
 .idea/
+.claude
+CLAUDE.md
