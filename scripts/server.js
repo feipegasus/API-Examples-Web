@@ -13,6 +13,7 @@ const dir = path.join(__dirname, "../src");
 const abbDemoDir = path.join(dir, "abb-ai-demo");
 const TOKEN_FILE = path.join(__dirname, "token.json");
 const STEP_RECORD_FILE = path.join(__dirname, "step_record.json");
+const STEP_FILE = path.join(__dirname, "step.json");
 const UPLOAD_DIR = path.join(__dirname, "upload");
 
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -25,6 +26,26 @@ let tokenStore = {
 };
 
 let stepRecords = {};
+
+const DEFAULT_STEP_DATA = {
+  steps: [
+    { step: 0, status: "pending", url: "" },
+    { step: 1, status: "pending", url: "" },
+    { step: 2, status: "pending", url: "" }
+  ]
+};
+
+function createDefaultStepData() {
+  return {
+    steps: DEFAULT_STEP_DATA.steps.map((item) => ({
+      step: item.step,
+      status: item.status,
+      url: item.url
+    }))
+  };
+}
+
+let stepData = createDefaultStepData();
 
 function loadTokenFromFile() {
   try {
@@ -57,6 +78,60 @@ function loadStepRecords() {
 
 function saveStepRecords() {
   fs.writeFileSync(STEP_RECORD_FILE, JSON.stringify(stepRecords, null, 2), "utf8");
+}
+
+function loadStepDataFromFile() {
+  try {
+    if (fs.existsSync(STEP_FILE)) {
+      const raw = fs.readFileSync(STEP_FILE, "utf8");
+      const parsed = JSON.parse(raw);
+      const isValid = parsed && Array.isArray(parsed.steps);
+      if (isValid) {
+        stepData = {
+          steps: parsed.steps
+            .filter((item) => item && Number.isInteger(Number(item.step)) && typeof item.status === "string")
+            .map((item) => ({
+              step: Number(item.step),
+              status: item.status,
+              url: typeof item.url === "string" ? item.url : ""
+            }))
+        };
+        return;
+      }
+    }
+  } catch (_err) {
+    // fall back to default step data
+  }
+
+  stepData = createDefaultStepData();
+  fs.writeFileSync(STEP_FILE, JSON.stringify(stepData, null, 2), "utf8");
+}
+
+function saveStepDataToFile() {
+  fs.writeFileSync(STEP_FILE, JSON.stringify(stepData, null, 2), "utf8");
+}
+
+function clearUploadDirectory() {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    return 0;
+  }
+
+  let deletedCount = 0;
+  const entries = fs.readdirSync(UPLOAD_DIR, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const entryPath = path.join(UPLOAD_DIR, entry.name);
+    if (entry.isDirectory()) {
+      fs.rmSync(entryPath, { recursive: true, force: true });
+      deletedCount += 1;
+      continue;
+    }
+
+    fs.unlinkSync(entryPath);
+    deletedCount += 1;
+  }
+
+  return deletedCount;
 }
 
 function isValidStepStatus(status) {
@@ -96,6 +171,7 @@ async function scanQRCode(imgBuffer) {
 
 loadTokenFromFile();
 loadStepRecords();
+loadStepDataFromFile();
 
 const app = express();
 app.set("trust proxy", true);
@@ -123,202 +199,218 @@ let latestApiData = {
   }
 };
 
-function buildOpenApiSpec(baseUrl) {
-  return {
-    openapi: "3.0.3",
-    info: {
-      title: "API Examples Web Server API",
-      version: "1.0.0",
-      description: "Merged API document for scripts/server.js"
-    },
-    servers: [
-      {
-        url: baseUrl
+const OPENAPI_SPEC = {
+  openapi: "3.0.3",
+  info: {
+    title: "API Examples Web Server API",
+    version: "1.0.0",
+    description: "Merged API document for scripts/server.js"
+  },
+  servers: [
+    {
+      url: `http://localhost:${PORT}`
+    }
+  ],
+  tags: [
+    { name: "basic" },
+    { name: "token" },
+    { name: "qr" },
+    { name: "step" },
+    { name: "realtime" }
+  ],
+  paths: {
+    "/api/hello": {
+      get: {
+        tags: ["basic"],
+        summary: "Health check hello API",
+        responses: {
+          "200": {
+            description: "Success"
+          }
+        }
       }
-    ],
-    tags: [
-      { name: "basic" },
-      { name: "token" },
-      { name: "qr" },
-      { name: "step" },
-      { name: "realtime" }
-    ],
-    paths: {
-      "/api/hello": {
-        get: {
-          tags: ["basic"],
-          summary: "Health check hello API",
-          responses: {
-            "200": {
-              description: "Success"
-            }
+    },
+    "/api/user": {
+      get: {
+        tags: ["basic"],
+        summary: "Get demo user",
+        responses: {
+          "200": {
+            description: "Success"
           }
         }
-      },
-      "/api/user": {
-        get: {
-          tags: ["basic"],
-          summary: "Get demo user",
-          responses: {
-            "200": {
-              description: "Success"
-            }
-          }
-        }
-      },
-      "/api/token/update": {
-        put: {
-          tags: ["token"],
-          summary: "Update token",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["token"],
-                  properties: {
-                    token: { type: "string", example: "your-token-value" }
-                  }
+      }
+    },
+    "/api/token/update": {
+      put: {
+        tags: ["token"],
+        summary: "Update token",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["token"],
+                properties: {
+                  token: { type: "string", example: "your-token-value" }
                 }
               }
             }
-          },
-          responses: {
-            "200": { description: "Token updated" },
-            "400": { description: "Invalid request" }
-          }
-        }
-      },
-      "/api/token/get": {
-        get: {
-          tags: ["token"],
-          summary: "Get current token",
-          responses: {
-            "200": {
-              description: "Success"
-            }
-          }
-        }
-      },
-      "/api/scan-qr": {
-        post: {
-          tags: ["qr"],
-          summary: "Upload image and parse QR",
-          requestBody: {
-            required: true,
-            content: {
-              "multipart/form-data": {
-                schema: {
-                  type: "object",
-                  required: ["img"],
-                  properties: {
-                    img: {
-                      type: "string",
-                      format: "binary"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          responses: {
-            "200": { description: "Parsed or no qr code" },
-            "400": { description: "Invalid upload" },
-            "500": { description: "Decode failed" }
-          }
-        }
-      },
-      "/api/step/status": {
-        post: {
-          tags: ["step"],
-          summary: "Update step status with optional image",
-          requestBody: {
-            required: true,
-            content: {
-              "multipart/form-data": {
-                schema: {
-                  type: "object",
-                  required: ["step_no", "step_status"],
-                  properties: {
-                    step_no: { type: "string", example: "1" },
-                    step_status: {
-                      type: "string",
-                      enum: ["complete", "pending", "failed"],
-                      example: "complete"
-                    },
-                    image: {
-                      type: "string",
-                      format: "binary"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          responses: {
-            "200": { description: "Step updated" },
-            "400": { description: "Validation error" },
-            "500": { description: "File save error" }
-          }
-        }
-      },
-      "/api/realtime/latest": {
-        get: {
-          tags: ["realtime"],
-          summary: "Get latest realtime payload",
-          responses: {
-            "200": { description: "Success" }
           }
         },
-        post: {
-          tags: ["realtime"],
-          summary: "Update latest realtime payload",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  additionalProperties: true,
-                  example: {
-                    status: "running",
-                    message: "new payload"
+        responses: {
+          "200": { description: "Token updated" },
+          "400": { description: "Invalid request" }
+        }
+      }
+    },
+    "/api/token/get": {
+      get: {
+        tags: ["token"],
+        summary: "Get current token",
+        responses: {
+          "200": {
+            description: "Success"
+          }
+        }
+      }
+    },
+    "/api/scan-qr": {
+      post: {
+        tags: ["qr"],
+        summary: "Upload image and parse QR",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["img"],
+                properties: {
+                  img: {
+                    type: "string",
+                    format: "binary"
                   }
                 }
               }
             }
-          },
-          responses: {
-            "200": { description: "Updated" }
           }
+        },
+        responses: {
+          "200": { description: "Parsed or no qr code" },
+          "400": { description: "Invalid upload" },
+          "500": { description: "Decode failed" }
+        }
+      }
+    },
+    "/api/step/status": {
+      get: {
+        tags: ["step"],
+        summary: "Get step status data from step.json",
+        responses: {
+          "200": { description: "Step data" },
+          "500": { description: "Read step data failed" }
         }
       },
-      "/api/swagger.json": {
-        get: {
-          tags: ["basic"],
-          summary: "Get OpenAPI spec json",
-          responses: {
-            "200": {
-              description: "OpenAPI json"
+      post: {
+        tags: ["step"],
+        summary: "Update step status with optional image",
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["step_no", "step_status"],
+                properties: {
+                  step_no: { type: "string", example: "1" },
+                  step_status: {
+                    type: "string",
+                    enum: ["complete", "pending", "failed"],
+                    example: "complete"
+                  },
+                  image: {
+                    type: "string",
+                    format: "binary"
+                  }
+                }
+              }
             }
           }
+        },
+        responses: {
+          "200": { description: "Step updated" },
+          "400": { description: "Validation error" },
+          "500": { description: "File save error" }
+        }
+      }
+    },
+    "/api/step/status/reset": {
+      post: {
+        tags: ["step"],
+        summary: "Reset step.json data to default",
+        responses: {
+          "200": { description: "Step data reset success" },
+          "500": { description: "Reset step data failed" }
+        }
+      }
+    },
+    "/api/realtime/latest": {
+      get: {
+        tags: ["realtime"],
+        summary: "Get latest realtime payload",
+        responses: {
+          "200": { description: "Success" }
         }
       },
-      "/api/swagger": {
-        get: {
-          tags: ["basic"],
-          summary: "Open Swagger UI page",
-          responses: {
-            "200": {
-              description: "Swagger UI HTML"
+      post: {
+        tags: ["realtime"],
+        summary: "Update latest realtime payload",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: true,
+                example: {
+                  status: "running",
+                  message: "new payload"
+                }
+              }
             }
+          }
+        },
+        responses: {
+          "200": { description: "Updated" }
+        }
+      }
+    },
+    "/api/swagger.json": {
+      get: {
+        tags: ["basic"],
+        summary: "Get OpenAPI spec json",
+        responses: {
+          "200": {
+            description: "OpenAPI json"
+          }
+        }
+      }
+    },
+    "/api/swagger": {
+      get: {
+        tags: ["basic"],
+        summary: "Open Swagger UI page",
+        responses: {
+          "200": {
+            description: "Swagger UI HTML"
           }
         }
       }
     }
-  };
-}
+  }
+};
 
 function buildUpdateMessage(payload) {
   return JSON.stringify({
@@ -439,10 +531,36 @@ app.post("/api/scan-qr", (req, res) => {
   req.pipe(bb);
 });
 
+app.get("/api/step/status", (_req, res) => {
+  try {
+    loadStepDataFromFile();
+    res.json(stepData);
+  } catch (err) {
+    res.status(500).json({ code: 500, error: `read step data failed: ${err.message}` });
+  }
+});
+
+app.post("/api/step/status/reset", (_req, res) => {
+  try {
+    const deletedUploadCount = clearUploadDirectory();
+    stepData = createDefaultStepData();
+    saveStepDataToFile();
+    res.json({
+      code: 200,
+      msg: "step data reset success",
+      deleted_upload_count: deletedUploadCount,
+      data: stepData
+    });
+  } catch (err) {
+    res.status(500).json({ code: 500, error: `reset step data failed: ${err.message}` });
+  }
+});
+
 app.post("/api/step/status", (req, res) => {
   const bb = Busboy({ headers: req.headers });
   const formData = { step_no: null, step_status: null };
   let imageSavePath = null;
+  let imageUrl = null;
   let parseError = null;
   const fileWriteTasks = [];
 
@@ -466,6 +584,7 @@ app.post("/api/step/status", (req, res) => {
     const uniqueName = `${Date.now()}_${filename}`;
     const fullPath = path.join(UPLOAD_DIR, uniqueName);
     imageSavePath = `upload/${uniqueName}`;
+    imageUrl = `/upload/${uniqueName}`;
 
     const task = new Promise((resolve, reject) => {
       const writeStream = fs.createWriteStream(fullPath);
@@ -505,6 +624,27 @@ app.post("/api/step/status", (req, res) => {
       return;
     }
 
+    const parsedStepNo = Number(step_no);
+    if (!Number.isInteger(parsedStepNo) || parsedStepNo < 0) {
+      res.status(400).json({ code: 400, error: "step_no must be a non-negative integer" });
+      return;
+    }
+
+    const stepIndex = stepData.steps.findIndex((item) => item.step === parsedStepNo);
+    if (stepIndex >= 0) {
+      stepData.steps[stepIndex].status = step_status;
+      if (imageUrl) {
+        stepData.steps[stepIndex].url = imageUrl;
+      }
+    } else {
+      stepData.steps.push({
+        step: parsedStepNo,
+        status: step_status,
+        url: imageUrl || ""
+      });
+    }
+    saveStepDataToFile();
+
     stepRecords[step_no] = {
       step_no,
       step_status,
@@ -531,22 +671,22 @@ app.get("/api/realtime/latest", (_req, res) => {
 });
 
 app.get("/api/swagger.json", (_req, res) => {
-  const forwardedProto = _req.headers["x-forwarded-proto"];
-  const protoRaw = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
-  const protocol = String(protoRaw || _req.protocol || "http").split(",")[0].trim();
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
 
-  const forwardedHost = _req.headers["x-forwarded-host"];
-  const originalHost = _req.headers["x-original-host"];
-  const hostRaw = Array.isArray(forwardedHost)
-    ? forwardedHost[0]
-    : forwardedHost || (Array.isArray(originalHost) ? originalHost[0] : originalHost) || _req.get("host");
-  const host = String(hostRaw || `localhost:${PORT}`).split(",")[0].trim();
-
-  const baseUrl = `${protocol}://${host}`;
-  res.json(buildOpenApiSpec(baseUrl));
+  res.json({
+    ...OPENAPI_SPEC,
+    // Relative URL guarantees Swagger uses the same origin as the current page.
+    servers: [{ url: "/" }]
+  });
 });
 
 app.get("/api/swagger", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
   res.type("html").send(`<!doctype html>
 <html lang="en">
 <head>
@@ -559,9 +699,17 @@ app.get("/api/swagger", (_req, res) => {
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
-    window.ui = SwaggerUIBundle({
-      url: "/api/swagger.json",
-      dom_id: "#swagger-ui"
+    (async function renderSwagger() {
+      const resp = await fetch("/api/swagger.json?t=" + Date.now(), { cache: "no-store" });
+      const spec = await resp.json();
+      spec.servers = [{ url: window.location.origin }];
+
+      window.ui = SwaggerUIBundle({
+        spec,
+        dom_id: "#swagger-ui"
+      });
+    })().catch(function (err) {
+      document.getElementById("swagger-ui").innerHTML = "<pre>Failed to load swagger: " + String(err) + "</pre>";
     });
   </script>
 </body>
