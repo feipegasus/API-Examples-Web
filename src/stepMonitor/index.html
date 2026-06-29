@@ -234,6 +234,15 @@
       }
       .step-image.none { color: var(--text-3); }
       .step-image.none > span:first-child { opacity: 0.4; }
+      .step-thumb-link { display: inline-flex; flex: 0 0 auto; line-height: 0; }
+      .step-image .step-thumb {
+        width: 44px; height: 44px; object-fit: cover; display: block;
+        border-radius: var(--r-sm); border: 1px solid var(--hairline);
+      }
+      /* 有图时只显示缩略图，隐藏回形针/路径文字；加载失败 (.img-broken) 时回退为路径文字 */
+      .step-image.has-img > span { display: none; }
+      .step-image.has-img.img-broken .step-thumb-link { display: none; }
+      .step-image.has-img.img-broken > span { display: inline-flex; }
 
       .step-time {
         text-align: right; font-size: 11.5px; color: var(--text-3);

@@ -3,6 +3,9 @@
 const API_BASE = window.location.origin;
 const STEP_LATEST_URL = `${API_BASE}/api/realtime/latest`;
 const STEP_STATUS_URL = STEP_LATEST_URL;
+// WO-1025 的步骤数据来源：后端 step.json 状态接口。
+const STEP_STATUS_API = `${API_BASE}/api/step/status`;
+const STEP_STATUS_ORDER_ID = "wo-1025";
 const WS_URL = window.location.origin.replace(/^http/, "ws");
 
 // 默认启用真实后端；网络异常时会自动回退到本地展示。
@@ -391,6 +394,46 @@ async function loadLatestFromApi() {
   }
 }
 
+// 后端 step.json 状态 → 前端状态。后端使用 failed，前端使用 error。
+function mapStepApiStatus(s) {
+  if (s === "failed") return "error";
+  return VALID_STATUS.includes(s) ? s : "pending";
+}
+
+// 从 /api/step/status 拉取并填充 WO-1025 的步骤集合。
+//   GET /api/step/status -> { steps: [{ step, status, url }] }
+//   字段映射：step->step_no，status->step_status，url->image_path。
+//   接口无时间戳，update_time 留空（不渲染时间）。
+// 用 step.json 数据 { steps: [{ step, status, url }] } 填充 WO-1025。
+function applyStepStatusData(data) {
+  if (!data || !Array.isArray(data.steps)) return;
+  const order = workOrders.get(STEP_STATUS_ORDER_ID);
+  if (!order) return;
+  order.steps.clear();
+  data.steps.forEach((it) => {
+    if (!it || it.step == null) return;
+    // 接口 step 从 0 起，显示从 1 起（同时对齐流程模板 1–7）。
+    const key = String(Number(it.step) + 1);
+    order.steps.set(key, {
+      step_no: key,
+      step_status: mapStepApiStatus(it.status),
+      image_path: it.url || null,
+      update_time: null,
+    });
+  });
+  order.updated = new Date().toISOString();
+  refreshActiveView();
+}
+
+async function loadStepStatusOrder() {
+  try {
+    const resp = await fetch(STEP_STATUS_API).then((r) => r.json());
+    applyStepStatusData(resp);
+  } catch (err) {
+    console.warn("Failed to load step status for WO-1025", err);
+  }
+}
+
 let ws = null;
 let reconnectTimer = null;
 let reconnectDelay = 1000;
@@ -766,7 +809,12 @@ function render() {
     .map((it) => {
       const s = normalizeStatus(it.step_status);
       const img = it.image_path
-        ? `<div class="step-image" title="${escapeHTML(it.image_path)}">
+        ? `<div class="step-image has-img" title="${escapeHTML(it.image_path)}">
+             <a class="step-thumb-link" href="${escapeHTML(it.image_path)}" target="_blank" rel="noopener"
+                onclick="event.stopPropagation()">
+               <img class="step-thumb" src="${escapeHTML(it.image_path)}" alt="" loading="lazy"
+                    onerror="this.closest('.step-image').classList.add('img-broken')">
+             </a>
              <span>&#128206;</span><span class="path">${escapeHTML(it.image_path)}</span>
            </div>`
         : `<div class="step-image none"><span>&#9898;</span><span>${escapeHTML(t("noImage"))}</span></div>`;
@@ -925,6 +973,8 @@ function route() {
     viewOrders.style.display = "none";
     viewMonitor.style.display = "";
     render();
+    // 进入 WO-1025 时刷新其后端步骤状态。
+    if (currentOrderId === STEP_STATUS_ORDER_ID) loadStepStatusOrder();
   } else {
     currentOrderId = null;
     if (currentDetailStep != null) closeDetail();
@@ -1010,6 +1060,9 @@ async function submitReport() {
 // ===================== init =====================
 $(function () {
   seedWorkOrders();
+  loadStepStatusOrder();
+  // WO-1025 步骤状态轮询：30s 一次。
+  setInterval(loadStepStatusOrder, 30000);
   loadLatestFromApi();
   connectRealtime();
   applyI18n();
@@ -1051,9 +1104,29 @@ $(function () {
     if (e.key === "Escape" && currentDetailStep != null) closeDetail();
   });
 
-  $("#clear-all").click(function () {
+  $("#clear-all").click(async function () {
     const order = getCurrentOrder();
-    if (!order || !order.steps.size) return;
+    if (!order) return;
+
+    // WO-1025：清空 = 调用后端 reset 接口（重置 step.json 并清理上传图片）。
+    if (order.id === STEP_STATUS_ORDER_ID) {
+      const $btn = $(this).attr("disabled", true);
+      try {
+        const resp = await fetch(`${STEP_STATUS_API}/reset`, { method: "POST" }).then((r) => r.json());
+        if (!resp || resp.code !== 200) throw new Error((resp && resp.error) || t("reportFailed"));
+        applyStepStatusData(resp.data);
+        message.info(t("cleared"));
+      } catch (err) {
+        console.error(err);
+        message.error(err.message || t("reportFailed"));
+      } finally {
+        $btn.attr("disabled", false);
+      }
+      return;
+    }
+
+    // 其它工单：仅清空本地展示。
+    if (!order.steps.size) return;
     if (!window.confirm(t("confirmClear"))) return;
     order.steps.clear();
     order.updated = new Date().toISOString();

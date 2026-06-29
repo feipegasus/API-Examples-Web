@@ -1,0 +1,19 @@
+{
+  "steps": [
+    {
+      "step": 0,
+      "status": "pending",
+      "url": ""
+    },
+    {
+      "step": 1,
+      "status": "pending",
+      "url": ""
+    },
+    {
+      "step": 2,
+      "status": "pending",
+      "url": ""
+    }
+  ]
+}
