@@ -1,14 +1,12 @@
 // ===================== config =====================
-// 步骤状态服务（与 inmoCustomCall 同一后端域名）。
-const API_BASE = "https://websocket-token-f3dgg6hzgsf4cbcz.koreasouth-01.azurewebsites.net";
-const STEP_STATUS_URL = `${API_BASE}/api/step/status`;
+// 使用当前站点同源后端，走已合并的 realtime API。
+const API_BASE = window.location.origin;
+const STEP_LATEST_URL = `${API_BASE}/api/realtime/latest`;
+const STEP_STATUS_URL = STEP_LATEST_URL;
+const WS_URL = window.location.origin.replace(/^http/, "ws");
 
-// 模拟模式：true 时上报仅在本地构造同构返回（不请求后端，不会报错/卡加载）；
-// 接入真实后端时改为 false 即走 POST /api/step/status。
-const SIMULATE = true;
-
-// 服务端只有「更新」无「查询」接口，故进度数据由前端本地累加：
-// 每次 POST /api/step/status 成功后，用返回的 data 按 step_no upsert 到本地。
+// 默认启用真实后端；网络异常时会自动回退到本地展示。
+const SIMULATE = false;
 const VALID_STATUS = ["pending", "in_progress", "complete", "error"];
 
 // ===================== local store =====================
@@ -25,6 +23,10 @@ const I18N = {
   "zh-CN": {
     title: "步骤监控",
     live: "实时",
+    liveConnected: "实时 · 已连接",
+    liveConnecting: "实时 · 连接中",
+    liveReconnecting: "实时 · 重连中",
+    liveOffline: "实时 · 离线",
     remoteAssist: "远程协助",
     stream: "作业流",
     footerNote: "数据按 step_no 实时累加 · 仅本地展示",
@@ -44,8 +46,7 @@ const I18N = {
     chooseFile: "选择文件",
     noFileChosen: "未选择文件",
     phStepNo: "请输入步骤号，如 1",
-    imageHint: "上传后将在步骤卡缩略图与详情中展示现场图片。",
-    onSitePhoto: "现场照片",
+    imageHint: "仅上传至服务端用于记录，本页只展示返回的路径，不渲染图片。",
     submit: "提交上报",
     submitting: "提交中…",
     cancel: "取消",
@@ -83,6 +84,10 @@ const I18N = {
   en: {
     title: "Step Monitor",
     live: "Live",
+    liveConnected: "Live · Connected",
+    liveConnecting: "Live · Connecting",
+    liveReconnecting: "Live · Reconnecting",
+    liveOffline: "Live · Offline",
     remoteAssist: "Remote Assistance",
     stream: "Operation stream",
     footerNote: "Accumulated by step_no in real time · local view only",
@@ -102,8 +107,7 @@ const I18N = {
     chooseFile: "Choose file",
     noFileChosen: "No file chosen",
     phStepNo: "Enter step number, e.g. 1",
-    imageHint: "After upload, the on-site photo is shown on the step card thumbnail and in details.",
-    onSitePhoto: "On-site photo",
+    imageHint: "Uploaded to the server for record only; this page shows the returned path, not the image.",
     submit: "Submit",
     submitting: "Submitting…",
     cancel: "Cancel",
@@ -140,6 +144,31 @@ const I18N = {
   },
 };
 
+let liveState = "connecting";
+
+function setLiveState(next) {
+  liveState = next;
+  const pill = document.getElementById("live-pill");
+  const text = document.getElementById("live-text");
+  if (!pill || !text) return;
+
+  pill.classList.remove("is-connecting", "is-offline");
+  if (next === "connecting" || next === "reconnecting") {
+    pill.classList.add("is-connecting");
+  }
+  if (next === "offline") {
+    pill.classList.add("is-offline");
+  }
+
+  const map = {
+    connected: "liveConnected",
+    connecting: "liveConnecting",
+    reconnecting: "liveReconnecting",
+    offline: "liveOffline",
+  };
+  text.textContent = t(map[next] || "liveConnecting");
+}
+
 function getLang() {
   const saved = getOptionsFromLocal().language;
   if (saved === "en" || saved === "zh-CN") return saved;
@@ -165,6 +194,7 @@ function applyI18n() {
     }
   });
   $("#lang-select").val(lang);
+  setLiveState(liveState);
 }
 function setLang(lang) {
   setOptionsToLocal({ language: lang });
@@ -218,6 +248,14 @@ const message = {
   warning: (m) => showToast(m, "warning"),
   info: (m) => showToast(m, "info"),
 };
+
+function refreshActiveView() {
+  if (currentOrderId) {
+    render();
+  } else {
+    renderOrders();
+  }
+}
 
 function normalizeStatus(s) {
   return VALID_STATUS.includes(s) ? s : "unknown";
@@ -304,20 +342,116 @@ function orderUpdatedTime(order) {
 }
 
 // 上报数据 upsert 到「当前工单」的步骤集合。
-//   POST /api/step/status -> { step_no, step_status, image_path, update_time }
-//   WS "step_update"       -> { step_no, step_status, image_url,  timestamp  }
+//   POST /api/realtime/latest -> payload: { step_no, step_status, image_path, update_time, order_id? }
+//   WS  api-data-update        -> payload: { step_no, step_status, image_path, update_time, order_id? }
 function upsertStep(data) {
-  const order = getCurrentOrder();
+  if (!data) return;
+  const targetOrderId = data.order_id || currentOrderId || (Array.from(workOrders.keys())[0] || null);
+  const order = targetOrderId ? workOrders.get(targetOrderId) : null;
   if (!order || !data || data.step_no == null) return;
   const key = String(data.step_no);
   order.steps.set(key, {
     step_no: key,
     step_status: data.step_status,
     image_path: data.image_path || data.image_url || null,
-    image_src: data.image_src || data.image_url || data.image_path || null,
     update_time: data.update_time || data.timestamp || new Date().toISOString(),
   });
   order.updated = new Date().toISOString();
+}
+
+function applyRealtimePayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+
+  if (payload.step_no != null) {
+    upsertStep(payload);
+    return true;
+  }
+
+  if (Array.isArray(payload.steps)) {
+    payload.steps.forEach((step) => {
+      if (step && typeof step === "object") {
+        upsertStep({ ...step, order_id: step.order_id || payload.order_id });
+      }
+    });
+    return payload.steps.length > 0;
+  }
+
+  return false;
+}
+
+async function loadLatestFromApi() {
+  try {
+    const resp = await fetch(STEP_LATEST_URL).then((r) => r.json());
+    if (!resp || !resp.ok || !resp.data) return;
+    if (applyRealtimePayload(resp.data.payload)) {
+      refreshActiveView();
+    }
+  } catch (err) {
+    console.warn("Failed to load latest realtime data", err);
+  }
+}
+
+let ws = null;
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  setLiveState("reconnecting");
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    connectRealtime();
+  }, reconnectDelay);
+}
+
+function handleRealtimeMessage(raw) {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return;
+  }
+
+  if (parsed && parsed.type === "api-data-update") {
+    if (applyRealtimePayload(parsed.payload)) {
+      refreshActiveView();
+    }
+    return;
+  }
+
+  if (applyRealtimePayload(parsed)) {
+    refreshActiveView();
+  }
+}
+
+function connectRealtime() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  setLiveState("connecting");
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    setLiveState("connected");
+  };
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === "string") {
+      handleRealtimeMessage(event.data);
+    }
+  };
+
+  ws.onclose = () => {
+    setLiveState("offline");
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => {
+    setLiveState("offline");
+  };
 }
 
 // ===================== procedure catalog =====================
@@ -536,23 +670,6 @@ function populateDetail() {
   if (currentDetailStep == null) return;
   document.getElementById("detail-step-no").textContent = currentDetailStep;
 
-  // 现场照片（来自当前工单该步骤的上报；独立于模板，无详情也显示）。
-  const order = getCurrentOrder();
-  const step = order ? order.steps.get(String(currentDetailStep)) : null;
-  const photoWrap = document.getElementById("detail-photo");
-  if (photoWrap) {
-    if (step && step.image_src) {
-      const imgEl = document.getElementById("detail-photo-img");
-      imgEl.src = step.image_src;
-      imgEl.onerror = () => { photoWrap.style.display = "none"; };
-      document.getElementById("detail-photo-link").href = step.image_src;
-      document.getElementById("detail-photo-cap").textContent = step.image_path || "";
-      photoWrap.style.display = "";
-    } else {
-      photoWrap.style.display = "none";
-    }
-  }
-
   const proc = getProcedure(currentDetailStep);
   const content = document.getElementById("detail-content");
   const emptyEl = document.getElementById("detail-empty");
@@ -648,20 +765,11 @@ function render() {
   list.innerHTML = items
     .map((it) => {
       const s = normalizeStatus(it.step_status);
-      let img;
-      if (it.image_src) {
-        img = `<div class="step-image" title="${escapeHTML(it.image_path || "")}">
-             <img class="step-thumb" src="${escapeHTML(it.image_src)}" alt=""
-                  loading="lazy" onerror="this.remove()" />
-             <span class="path">${escapeHTML(it.image_path || t("onSitePhoto"))}</span>
-           </div>`;
-      } else if (it.image_path) {
-        img = `<div class="step-image" title="${escapeHTML(it.image_path)}">
+      const img = it.image_path
+        ? `<div class="step-image" title="${escapeHTML(it.image_path)}">
              <span>&#128206;</span><span class="path">${escapeHTML(it.image_path)}</span>
-           </div>`;
-      } else {
-        img = `<div class="step-image none"><span>&#9898;</span><span>${escapeHTML(t("noImage"))}</span></div>`;
-      }
+           </div>`
+        : `<div class="step-image none"><span>&#9898;</span><span>${escapeHTML(t("noImage"))}</span></div>`;
       return `
         <div class="step-card s-${s}" data-step="${escapeHTML(it.step_no)}"
              role="button" tabindex="0" title="${escapeHTML(t("viewDetail"))}">
@@ -698,7 +806,7 @@ function seedWorkOrders() {
       location: "车间 A · 1#驱动柜", assignee: "张工",
       created: iso(180),
       steps: [
-        { step_no: "1", step_status: "complete", image_path: "uploads/step1.jpg", image_src: "./sample-onsite.svg", update_time: iso(150) },
+        { step_no: "1", step_status: "complete", image_path: "uploads/step1.jpg", update_time: iso(150) },
         { step_no: "2", step_status: "complete", image_path: null, update_time: iso(120) },
         { step_no: "3", step_status: "in_progress", image_path: null, update_time: iso(20) },
       ],
@@ -717,7 +825,7 @@ function seedWorkOrders() {
       created: iso(300),
       steps: [
         { step_no: "1", step_status: "complete", image_path: null, update_time: iso(260) },
-        { step_no: "4", step_status: "error", image_path: "uploads/insulation.jpg", image_src: "./sample-onsite.svg", update_time: iso(40) },
+        { step_no: "4", step_status: "error", image_path: "uploads/insulation.jpg", update_time: iso(40) },
       ],
     },
   ];
@@ -854,30 +962,36 @@ async function submitReport() {
   const $btn = $("#submit-report");
   $btn.attr("disabled", true).text(t("submitting"));
 
-  const fd = new FormData();
-  fd.append("step_no", stepNo);
-  fd.append("step_status", status);
-  if (file) fd.append("image", file);
+  const reportPayload = {
+    order_id: currentOrderId || (Array.from(workOrders.keys())[0] || null),
+    step_no: stepNo,
+    step_status: status,
+    image_path: file ? `uploads/${file.name}` : null,
+    update_time: new Date().toISOString(),
+  };
 
   try {
     const resp = SIMULATE
       ? {
-          code: 200,
+          ok: true,
           msg: t("reportSuccess"),
           data: {
-            step_no: stepNo,
-            step_status: status,
-            image_path: file ? `uploads/${file.name}` : null,
-            image_src: file ? URL.createObjectURL(file) : null,
-            update_time: new Date().toISOString(),
+            payload: reportPayload,
           },
         }
-      : await fetch(STEP_STATUS_URL, { method: "POST", body: fd }).then((r) => r.json());
-    if (!resp || resp.code !== 200 || !resp.data) {
+      : await fetch(STEP_STATUS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reportPayload),
+        }).then((r) => r.json());
+    if (!resp || !resp.ok || !resp.data) {
       throw new Error((resp && resp.msg) || t("reportFailed"));
     }
-    upsertStep(resp.data);
-    render();
+
+    const updated = applyRealtimePayload(resp.data.payload) || applyRealtimePayload(reportPayload);
+    if (updated) {
+      refreshActiveView();
+    }
     message.success(resp.msg || t("reportSuccess"));
 
     const modalEl = document.getElementById("report-modal");
@@ -896,6 +1010,8 @@ async function submitReport() {
 // ===================== init =====================
 $(function () {
   seedWorkOrders();
+  loadLatestFromApi();
+  connectRealtime();
   applyI18n();
   refreshFileName();
   route();
