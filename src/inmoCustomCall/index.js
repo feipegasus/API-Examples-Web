@@ -5,8 +5,8 @@ AgoraRTC.enableLogUpload();
 // 因此把所需的少量工具函数内置于此，避免被全局 appid 校验强制跳转。
 
 const BASE_URL = "https://service-staging.agora.io/toolbox"; // token 服务（dev/staging）
-const TOKEN_URL =
-  "https://websocket-token-f3dgg6hzgsf4cbcz.koreasouth-01.azurewebsites.net/api/token/get"; // 页面级 token 服务
+// const TOKEN_URL= "https://websocket-token-f3dgg6hzgsf4cbcz.koreasouth-01.azurewebsites.net/api/token/get"; // 页面级 token 服务
+const TOKEN_URL= "http://localhost:3001/api/token/get"; // 页面级 token 服务
 
 // 默认 App ID / App Certificate（未手动设置时使用）
 const DEFAULT_APPID = "b1f05c421c3c4390aadee9b48d782c7c";
