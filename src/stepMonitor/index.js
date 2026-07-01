@@ -1061,8 +1061,8 @@ async function submitReport() {
 $(function () {
   seedWorkOrders();
   loadStepStatusOrder();
-  // WO-1025 步骤状态轮询：30s 一次。
-  setInterval(loadStepStatusOrder, 30000);
+  // WO-1025 步骤状态轮询：10s 一次。
+  setInterval(loadStepStatusOrder, 10000);
   loadLatestFromApi();
   connectRealtime();
   applyI18n();

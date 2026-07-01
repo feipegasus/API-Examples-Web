@@ -1,0 +1,14 @@
+{
+  "1": {
+    "step_no": "1",
+    "step_status": "complete",
+    "image_path": null,
+    "update_time": "2026-06-30T01:48:49.242Z"
+  },
+  "2": {
+    "step_no": "2",
+    "step_status": "complete",
+    "image_path": "upload/1782784329521_logo.jpg",
+    "update_time": "2026-06-30T01:52:09.525Z"
+  }
+}
